@@ -39,9 +39,10 @@ func readFile(filename string) string {
 }
 
 type Elem struct {
-	Name string
-	Text string
+	Name     string
+	Text     string
 	Children []*Elem
+	//isTextNode bool := false
 }
 
 func autoClose(value string) bool {
@@ -54,20 +55,17 @@ func autoClose(value string) bool {
 	return false
 }
 
-func parse(html string) {
+func parse(html string) *Elem {
 	var tree *Elem
 	var cursor *Elem
 	var stack []*Elem
-	var token xml.Token
 	decoder := xml.NewDecoder(strings.NewReader(html))
 	decoder.Strict = false
 	decoder.AutoClose = xml.HTMLAutoClose
 	for {
+		token, _ := decoder.Token()
 		if token == nil {
-			token, _ = decoder.Token()
-			if token == nil {
-				break
-			}
+			break
 		}
 
 		switch entity := token.(type) {
@@ -80,20 +78,55 @@ func parse(html string) {
 			}
 			tree = cursor
 			stack = append(stack, cursor)
-			printStack(stack)
 		case xml.EndElement:
-			fmt.Printf("</%s>\n", entity.Name.Local)
+			if tree.Name != entity.Name.Local {
+				panic("Tag names mismatch: got " + entity.Name.Local + ", expected " + tree.Name)
+			}
+			stack = stack[:len(stack) - 1]
+			if len(stack) > 0 {
+				tree = stack[len(stack) - 1]
+			}
+			//fmt.Printf("</%s>\n", entity.Name.Local)
 		case xml.CharData:
 			fmt.Printf("%s\n", entity)
+			if (tree != nil) {
+				cursor = new(Elem)
+				cursor.Text = fmt.Sprintf("%s", entity)
+				tree.Children = append(tree.Children, cursor)
+			}
+
 		default:
 			fmt.Printf("%#v\n", token)
 		}
-		token = nil
+		printStack(stack)
 	}
-	fmt.Println(tree)
+	return tree
 }
 
-func printStack (stack []*Elem) {
+func renderMarkdown(tree *Elem) string {
+
+	return renderRecursive(tree, false)
+}
+
+func renderRecursive(tree *Elem, inBody bool) string {
+
+	if tree.Name == "" {
+		if inBody {
+			return tree.Text
+		}
+		return ""
+	}
+	str := ""
+	if (tree.Name == "body") {
+		inBody = true
+	}
+	for _, elem := range tree.Children {
+		str += renderRecursive(elem, inBody)
+	}
+	return str
+}
+
+func printStack(stack []*Elem) {
 	for i, elem := range stack {
 		if i > 0 {
 			fmt.Printf(" > ")
@@ -102,15 +135,6 @@ func printStack (stack []*Elem) {
 	}
 	fmt.Println()
 }
-func isClosing(token xml.Token, name string) (result bool) {
-	defer func() {
-		if err := recover(); err != nil {
-			result = false
-		}
-	}()
-	entity := token.(xml.EndElement)
-	return strings.ToLower(name) == entity.Name.Local
-}
 
 func main() {
 	if len(os.Args) <= 1 {
@@ -118,5 +142,6 @@ func main() {
 	}
 	html := readFile(os.Args[1])
 	//fmt.Println(html)
-	parse(html)
+	tree := parse(html)
+	fmt.Printf("%s\n", renderMarkdown(tree))
 }
