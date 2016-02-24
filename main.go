@@ -42,17 +42,7 @@ type Elem struct {
 	Name     string
 	Text     string
 	Children []*Elem
-	//isTextNode bool := false
-}
-
-func autoClose(value string) bool {
-	value = strings.ToLower(value)
-	for _, s := range xml.HTMLAutoClose {
-		if strings.ToLower(s) == value {
-			return true
-		}
-	}
-	return false
+	isTextNode bool
 }
 
 func parse(html string) *Elem {
@@ -70,7 +60,6 @@ func parse(html string) *Elem {
 
 		switch entity := token.(type) {
 		case xml.StartElement:
-			//fmt.Printf("<%s>\n", entity.Name.Local)
 			cursor = new(Elem)
 			cursor.Name = entity.Name.Local
 			if (tree != nil) {
@@ -86,19 +75,16 @@ func parse(html string) *Elem {
 			if len(stack) > 0 {
 				tree = stack[len(stack) - 1]
 			}
-			//fmt.Printf("</%s>\n", entity.Name.Local)
 		case xml.CharData:
-			fmt.Printf("%s\n", entity)
 			if (tree != nil) {
 				cursor = new(Elem)
+				cursor.isTextNode = true
 				cursor.Text = fmt.Sprintf("%s", entity)
 				tree.Children = append(tree.Children, cursor)
 			}
-
 		default:
 			fmt.Printf("%#v\n", token)
 		}
-		printStack(stack)
 	}
 	return tree
 }
@@ -110,20 +96,34 @@ func renderMarkdown(tree *Elem) string {
 
 func renderRecursive(tree *Elem, inBody bool) string {
 
-	if tree.Name == "" {
+	if tree.isTextNode {
 		if inBody {
 			return tree.Text
 		}
 		return ""
 	}
-	str := ""
-	if (tree.Name == "body") {
+
+
+	template := "%s"
+	switch tree.Name {
+	case "body":
 		inBody = true
+	case "p":
+		template = "%s\n\n";
+	case "b":
+		template = "*%s*";
+	case "strong":
+		template = "*%s*";
+	case "h1":
+		//content = " #
 	}
+
+	content := ""
 	for _, elem := range tree.Children {
-		str += renderRecursive(elem, inBody)
+		content += renderRecursive(elem, inBody)
 	}
-	return str
+
+	return fmt.Sprintf(template, content)
 }
 
 func printStack(stack []*Elem) {
