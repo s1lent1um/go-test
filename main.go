@@ -6,12 +6,12 @@ import (
 	"os"
 	"encoding/xml"
 	"strings"
+	"regexp"
 )
 
 // this is a comment
 
 func readFile(filename string) string {
-	//fmt.Println(filename)
 	file, err := os.Open(filename)
 	if err != nil {
 		panic(err)
@@ -41,6 +41,7 @@ func readFile(filename string) string {
 type Elem struct {
 	Name     string
 	Text     string
+	Attributes []xml.Attr
 	Children []*Elem
 	isTextNode bool
 }
@@ -62,6 +63,7 @@ func parse(html string) *Elem {
 		case xml.StartElement:
 			cursor = new(Elem)
 			cursor.Name = entity.Name.Local
+			cursor.Attributes = entity.Attr
 			if (tree != nil) {
 				tree.Children = append(tree.Children, cursor)
 			}
@@ -83,57 +85,114 @@ func parse(html string) *Elem {
 				tree.Children = append(tree.Children, cursor)
 			}
 		default:
-			fmt.Printf("%#v\n", token)
+			//fmt.Printf("%#v\n", token)
 		}
 	}
 	return tree
 }
 
-func renderMarkdown(tree *Elem) string {
-
-	return renderRecursive(tree, false)
+func getAttr(attributes []xml.Attr, name string) string {
+	name = strings.ToLower(name)
+	for _, elem := range attributes {
+		if strings.ToLower(elem.Name.Local) == name {
+			return elem.Value
+		}
+	}
+	return ""
 }
 
-func renderRecursive(tree *Elem, inBody bool) string {
+func renderMarkdown(tree *Elem) string {
+
+	return renderRecursive(tree, false, 0)
+}
+
+func renderRecursive(tree *Elem, inBody bool, listOrder int) string {
 
 	if tree.isTextNode {
 		if inBody {
-			return tree.Text
+			return rtrim(minify(tree.Text))
 		}
 		return ""
 	}
 
-
+	goDeeper := true
 	template := "%s"
 	switch tree.Name {
 	case "body":
 		inBody = true
+	case "a":
+		template = "[%s](" + getAttr(tree.Attributes, "href") + ")"
+	case "hr":
+		template = "* * *\n\n%s"
+		goDeeper = false
 	case "p":
 		template = "%s\n\n";
+	case "s":
+		template = "~~%s~~";
+	case "i":
+		template = "*%s*";
+	case "em":
+		template = "*%s*";
 	case "b":
-		template = "*%s*";
+		template = "**%s**";
 	case "strong":
-		template = "*%s*";
+		template = "**%s**";
+	case "ul":
+		listOrder = 0
+		template = "%s\n\n"
+	case "ol":
+		listOrder = 1
+		template = "%s\n\n"
+	case "li":
+		if listOrder > 0 {
+			template = fmt.Sprintf("%d. %%s\n", listOrder)
+		} else {
+			template = "* %s\n"
+		}
+
 	case "h1":
-		//content = " #
+		template = "# %s\n\n";
+	case "h2":
+		template = "## %s\n\n";
+	case "h3":
+		template = "### %s\n\n";
+	case "h4":
+		template = "#### %s\n\n";
+	case "h5":
+		template = "##### %s\n\n";
+	case "h6":
+		template = "##### %s\n\n";
+	case "h7":
+		template = "###### %s\n\n";
 	}
 
 	content := ""
-	for _, elem := range tree.Children {
-		content += renderRecursive(elem, inBody)
+	if goDeeper {
+		index := 1
+		for _, elem := range tree.Children {
+			content += renderRecursive(elem, inBody, listOrder * index)
+			if !elem.isTextNode {
+				index++
+			}
+		}
 	}
 
-	return fmt.Sprintf(template, content)
+	return ltrim(fmt.Sprintf(template, content))
 }
 
-func printStack(stack []*Elem) {
-	for i, elem := range stack {
-		if i > 0 {
-			fmt.Printf(" > ")
-		}
-		fmt.Printf("%s", elem.Name)
-	}
-	fmt.Println()
+func ltrim(text string) string {
+	r , _ := regexp.Compile("^\\s*")
+	return r.ReplaceAllString(text, "")
+}
+
+func rtrim(text string) string {
+	r , _ := regexp.Compile("\\s*$")
+	return r.ReplaceAllString(text, "")
+}
+
+func minify(text string) string {
+	r , _ := regexp.Compile("\\s+")
+	return r.ReplaceAllString(text, " ")
 }
 
 func main() {
@@ -141,7 +200,6 @@ func main() {
 		os.Exit(2)
 	}
 	html := readFile(os.Args[1])
-	//fmt.Println(html)
 	tree := parse(html)
 	fmt.Printf("%s\n", renderMarkdown(tree))
 }
