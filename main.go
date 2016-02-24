@@ -110,7 +110,7 @@ func renderRecursive(tree *Elem, inBody bool, listOrder int) string {
 
 	if tree.isTextNode {
 		if inBody {
-			return rtrim(minify(tree.Text))
+			return minify(tree.Text)
 		}
 		return ""
 	}
@@ -177,17 +177,12 @@ func renderRecursive(tree *Elem, inBody bool, listOrder int) string {
 		}
 	}
 
-	return ltrim(fmt.Sprintf(template, content))
+	return trim(fmt.Sprintf(template, content))
 }
 
-func ltrim(text string) string {
-	r , _ := regexp.Compile("^\\s*")
-	return r.ReplaceAllString(text, "")
-}
-
-func rtrim(text string) string {
-	r , _ := regexp.Compile("\\s*$")
-	return r.ReplaceAllString(text, "")
+func trim(text string) string {
+	r , _ := regexp.Compile("(?m:^ *(.+?) *$)")
+	return r.ReplaceAllString(text, "$1")
 }
 
 func minify(text string) string {
